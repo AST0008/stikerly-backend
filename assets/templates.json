@@ -1,0 +1,38 @@
+[
+  {
+    "id": "distracted_bf",
+    "filename": "distracted_bf.jpg",
+    "name": "Distracted Boyfriend",
+    "face_slot": {
+      "x": 1195,
+      "y": 65,
+      "width": 319,
+      "height": 371,
+      "rotation": -15
+    }
+  },
+  {
+    "id": "drake_no",
+    "filename": "drake_no.jpg",
+    "name": "Drake Likes",
+    "face_slot": {
+      "x": 58,
+      "y": 148,
+      "width": 314,
+      "height": 343,
+      "rotation": -10
+    }
+  },
+  {
+    "id": "success_kid",
+    "filename": "success_kid.jpeg",
+    "name": "Success Kid",
+    "face_slot": {
+      "x": 40,
+      "y": 10,
+      "width": 104,
+      "height": 120,
+      "rotation": 0
+    }
+  }
+]
