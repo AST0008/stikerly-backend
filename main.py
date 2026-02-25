@@ -5,6 +5,8 @@ import os
 
 from fastapi.staticfiles import StaticFiles
 import mediapipe as mp
+import numpy as np
+# from networkx import diameter, radius
 
 from meme_manager import get_meme_template
 
@@ -16,7 +18,7 @@ import cv2
 
 
 
-from PIL import Image
+from PIL import Image, ImageFilter
 from rembg import remove
 
 
@@ -61,7 +63,6 @@ def load_face_detection_model():
     face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.2)
     return face_detection
 
-
 def detect_faces(image_path, face_detection):
     logger.info(f"Processing image: {image_path}")
     image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
@@ -98,57 +99,73 @@ def crop_center(image, detection, img_width, img_height):
     cropped_image = image[y_min:y_min + height, x_min:x_min + width]
     return cropped_image
 
+
+def add_edge_blur(image, feather_width=12):
+    """
+    Softens the hard cutout edge by feathering the alpha channel.
+    The face itself stays sharp — only the boundary fades out gradually.
+    """
+    image = image.convert("RGBA")
+    r, g, b, a = image.split()
+
+    # Blur only the alpha channel to feather the edges
+    a_feathered = a.filter(ImageFilter.GaussianBlur(feather_width))
+
+    image.putalpha(a_feathered)
+    return image
+
+
 face_detection = load_face_detection_model()
 
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
 
-@app.post("/upload")
-async def upload_image(file: UploadFile = File(...)):
-    _validate_file_extension(file.filename)
+# @app.post("/upload")
+# async def upload_image(file: UploadFile = File(...)):
+#     _validate_file_extension(file.filename)
 
-    input_ = Image.open(file.file)
-    output = remove(input_)
+#     input_ = Image.open(file.file)
+#     output = remove(input_)
 
-    output_path = os.path.join(UPLOAD_DIR, f"output_{file.filename}")
-    output.save(output_path)
+#     output_path = os.path.join(UPLOAD_DIR, f"output_{file.filename}")
+#     output.save(output_path)
 
-    if not os.path.exists(output_path):
-        raise HTTPException(status_code=500, detail="Failed to save the processed image.")
+#     if not os.path.exists(output_path):
+#         raise HTTPException(status_code=500, detail="Failed to save the processed image.")
 
-    try:
-        annotated_image, results = detect_faces(output_path, face_detection)
-    except Exception as e:
-        logger.exception("Face detection failed")
-        raise HTTPException(status_code=500, detail="Face detection failed.")
+#     try:
+#         annotated_image, results = detect_faces(output_path, face_detection)
+#     except Exception as e:
+#         logger.exception("Face detection failed")
+#         raise HTTPException(status_code=500, detail="Face detection failed.")
 
-    print("results:", results)
+#     print("results:", results)
     
     
     
-    if results and results.detections:
-        detection = results.detections[0]
+#     if results and results.detections:
+#         detection = results.detections[0]
         
         
-        # multiple faces detected, use the larfest one (most likely the main subject)
-        for det in results.detections[1:]:
-            print("results.detections:", results.detections)
-            if det.score[0] > detection.score[0]:
-                print(f"Found a better detection with confidence {det.score[0]:.2f} > {detection.score[0]:.2f}")
-                detection = det
+#         # multiple faces detected, use the larfest one (most likely the main subject)
+#         for det in results.detections[1:]:
+#             print("results.detections:", results.detections)
+#             if det.score[0] > detection.score[0]:
+#                 print(f"Found a better detection with confidence {det.score[0]:.2f} > {detection.score[0]:.2f}")
+#                 detection = det
         
         
-        img_width, img_height = annotated_image.shape[1], annotated_image.shape[0]
-        cropped_image = crop_center(annotated_image, detection, img_width, img_height)
+#         img_width, img_height = annotated_image.shape[1], annotated_image.shape[0]
+#         cropped_image = crop_center(annotated_image, detection, img_width, img_height)
 
-        cropped_path = os.path.join(UPLOAD_DIR, f"cropped_{file.filename}")
-        cv2.imwrite(cropped_path, cropped_image)
-        logger.info(f"Cropped face saved: {cropped_path}")
-    else:
-        logger.info("No faces detected.")
+#         cropped_path = os.path.join(UPLOAD_DIR, f"cropped_{file.filename}")
+#         cv2.imwrite(cropped_path, cropped_image)
+#         logger.info(f"Cropped face saved: {cropped_path}")
+#     else:
+#         logger.info("No faces detected.")
 
-    return {"filename": file.filename}
+#     return {"filename": file.filename}
 
 
 @app.post("/create-sticker")
@@ -171,35 +188,35 @@ def create_sticker(request: Request, file: UploadFile = File(...), template_id: 
 
     try:
         output_rgba.save(temp_path, format="PNG")
-
         annotated_image, results = detect_faces(temp_path, face_detection)
         
-        print("results:", results)
-    
-    
-    
         if results and results.detections:
             detection = results.detections[0]
             
-            
             # multiple faces detected, use the larfest one (most likely the main subject)
             for det in results.detections[1:]:
-                print("results.detections:", results.detections)
                 if det.score[0] > detection.score[0]:
-                    print(f"Found a better detection with confidence {det.score[0]:.2f} > {detection.score[0]:.2f}")
                     detection = det
-                else:
-                    print(f"Keeping current detection with confidence {detection.score[0]:.2f} over {det.score[0]:.2f}")
-        
 
         if not results or not results.detections:
             raise HTTPException(status_code=422, detail="No face detected in uploaded image.")
 
-        detection = results.detections[0]
+        # detection = results.detections[0]
+        
+        
+        
         img_width, img_height = annotated_image.shape[1], annotated_image.shape[0]
         cropped_face = crop_center(annotated_image, detection, img_width, img_height)
 
-        cv2.imwrite(final_face_path, cropped_face)
+        # Convert BGRA (OpenCV) → RGBA (PIL) before processing
+        if cropped_face.shape[2] == 4:
+            cropped_face_rgb = cv2.cvtColor(cropped_face, cv2.COLOR_BGRA2RGBA)
+        else:
+            cropped_face_rgb = cv2.cvtColor(cropped_face, cv2.COLOR_BGR2RGB)
+
+        # Feather the edges of the cropped face so it blends naturally with the meme
+        blur_image = add_edge_blur(Image.fromarray(cropped_face_rgb))
+        blur_image.save(final_face_path, format="PNG")
 
         meme_bg = Image.open(image_path).convert("RGBA")
         user_face = Image.open(final_face_path).convert("RGBA")
