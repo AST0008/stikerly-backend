@@ -1,0 +1,81 @@
+import os
+import shutil
+import logging
+
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+
+from app.config import TEMPLATE_DIR, ALLOWED_EXTENSIONS
+from app.database import templates_collection
+from app.models.template import SaveTemplateRequest
+from app.services.face import detect_face_slot_from_path
+
+logger = logging.getLogger(__name__)
+
+ADMIN_KEY = os.getenv("ADMIN_KEY", "changeme")
+
+
+def require_admin(x_admin_key: str = Header(...)):
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Invalid admin key.")
+
+
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+
+@router.post("/templates/upload")
+def upload_template_image(file: UploadFile = File(...)):
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+
+    dest_path = os.path.join(TEMPLATE_DIR, file.filename)
+    with open(dest_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    face_slot = detect_face_slot_from_path(dest_path)
+
+    return {
+        "filename": file.filename,
+        "image_url": f"/templates-static/{file.filename}",
+        "face_slot": face_slot,
+        "face_detected": face_slot is not None,
+    }
+
+
+@router.post("/templates")
+def save_template(body: SaveTemplateRequest):
+    image_path = os.path.join(TEMPLATE_DIR, body.filename)
+    if not os.path.isfile(image_path):
+        raise HTTPException(status_code=404, detail=f"Image file not found: {body.filename}")
+
+    doc = {
+        "id": body.id,
+        "name": body.name,
+        "filename": body.filename,
+        "tags": body.tags,
+        "face_slot": body.face_slot.model_dump(),
+    }
+    templates_collection.update_one({"id": body.id}, {"$set": doc}, upsert=True)
+
+    return {"status": "saved", "template_id": body.id}
+
+
+@router.get("/templates")
+def list_templates():
+    return list(templates_collection.find({}, {"_id": 0}))
+
+
+@router.delete("/templates/{template_id}")
+def delete_template(template_id: str, delete_file: bool = False):
+    doc = templates_collection.find_one({"id": template_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
+
+    templates_collection.delete_one({"id": template_id})
+
+    if delete_file:
+        file_path = os.path.join(TEMPLATE_DIR, doc["filename"])
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    return {"status": "deleted", "template_id": template_id}

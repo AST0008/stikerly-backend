@@ -9,7 +9,8 @@
       "width": 319,
       "height": 371,
       "rotation": -15
-    }
+    },
+    "tags": ["distracted_bf", "distracted_boyfriend", "distracted", "happy",  "jealous", "confused", "relationship", "couple"]
   },
   {
     "id": "drake_no",
@@ -21,7 +22,8 @@
       "width": 314,
       "height": 343,
       "rotation": 10
-    }
+    },
+    "tags": ["drake_no", "drake_likes", "drake", "like", "dislike", "opinion", "preference", "music", "rapper"]
   },
   {
     "id": "success_kid",
@@ -33,6 +35,7 @@
       "width": 104,
       "height": 120,
       "rotation": 0
-    }
+    },
+    "tags": ["success_kid", "success", "kid", "child", "happy"]
   }
 ]
