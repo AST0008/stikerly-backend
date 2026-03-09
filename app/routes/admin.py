@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 
 from app.config import TEMPLATE_DIR, ALLOWED_EXTENSIONS
 from app.database import templates_collection
-from app.models.template import SaveTemplateRequest
+from app.models.template import SaveTemplateRequest, RedditFetchRequest, GiphyFetchRequest
 from app.services.face import detect_face_slot_from_path
+from app.services.meme_fetcher import run_reddit_fetch, run_giphy_fetch
 
 logger = logging.getLogger(__name__)
 
@@ -79,3 +80,52 @@ def delete_template(template_id: str, delete_file: bool = False):
             os.remove(file_path)
 
     return {"status": "deleted", "template_id": template_id}
+
+
+# ---------------------------------------------------------------------------
+# Meme feed endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/memes/fetch/reddit", summary="Fetch trending memes from Reddit")
+def fetch_reddit(body: RedditFetchRequest):
+    """
+    Pull top posts from one or more subreddits, download the images,
+    auto-detect face slots, and store them as templates.
+
+    - **subreddits**: list of subreddit names, e.g. `["memes", "MemeEconomy"]`
+    - **limit_per_subreddit**: posts to fetch per subreddit (1-100)
+    - **timeframe**: `hour | day | week | month | year | all`
+    """
+    result = run_reddit_fetch(
+        subreddits=body.subreddits,
+        limit_per_subreddit=body.limit_per_subreddit,
+        timeframe=body.timeframe,
+    )
+    return {"status": "done", **result}
+
+
+@router.post("/memes/fetch/giphy", summary="Fetch trending memes from GIPHY")
+def fetch_giphy(body: GiphyFetchRequest):
+    """
+    Pull trending (or searched) GIFs from GIPHY, convert to PNG,
+    auto-detect face slots, and store them as templates.
+
+    Requires a GIPHY API key – pass it in the request body or set the
+    `GIPHY_API_KEY` environment variable.
+    """
+    api_key = body.api_key or os.getenv("GIPHY_API_KEY", "")
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A GIPHY API key is required. Pass it in the request body "
+                "or set the GIPHY_API_KEY environment variable."
+            ),
+        )
+    result = run_giphy_fetch(
+        api_key=api_key,
+        query=body.query,
+        limit=body.limit,
+        rating=body.rating,
+    )
+    return {"status": "done", **result}
