@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import TEMPLATE_DIR, UPLOAD_DIR
-from app.routes.admin import router as admin_router
+from app.routes.admin import router as admin_router, public_router as admin_public_router
 from app.routes.sticker import router as sticker_router
 from app.services.cleanup import cleanup
 from app.services.meme_fetcher import run_reddit_fetch, run_giphy_fetch
@@ -40,6 +40,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/templates-static", StaticFiles(directory=TEMPLATE_DIR), name="templates-static")
 
 app.include_router(sticker_router)
+app.include_router(admin_public_router)
 app.include_router(admin_router)
 
 scheduler = BackgroundScheduler()

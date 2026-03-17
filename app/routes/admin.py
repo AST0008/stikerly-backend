@@ -22,6 +22,9 @@ def require_admin(x_admin_key: str = Header(...)):
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
+# Public read-only router — same /admin prefix, no auth required.
+public_router = APIRouter(prefix="/admin", tags=["admin"])
+
 
 @router.post("/templates/upload")
 def upload_template_image(file: UploadFile = File(...)):
@@ -61,7 +64,7 @@ def save_template(body: SaveTemplateRequest):
     return {"status": "saved", "template_id": body.id}
 
 
-@router.get("/templates")
+@public_router.get("/templates", summary="List all meme templates")
 def list_templates():
     return list(templates_collection.find({}, {"_id": 0}))
 
