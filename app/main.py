@@ -3,6 +3,10 @@ import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
+
+# Load .env before importing local modules that might rely on environment variables
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,8 +16,6 @@ from app.routes.admin import router as admin_router, public_router as admin_publ
 from app.routes.sticker import router as sticker_router
 from app.services.cleanup import cleanup
 from app.services.meme_fetcher import run_reddit_fetch, run_giphy_fetch
-
-load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

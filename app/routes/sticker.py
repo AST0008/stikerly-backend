@@ -1,5 +1,9 @@
 import logging
 import os
+import io
+import cloudinary
+import cloudinary.uploader
+import requests
 
 import cv2
 import numpy as np
@@ -85,7 +89,14 @@ def create_sticker(
         blurred = add_edge_blur(Image.fromarray(cropped_face_rgb))
         blurred.save(final_face_path, format="PNG")
 
-        meme_bg = Image.open(template_image_path).convert("RGBA")
+        if template_image_path.startswith("http://") or template_image_path.startswith("https://"):
+            resp = requests.get(template_image_path)
+            resp.raise_for_status()
+            meme_bg_file = io.BytesIO(resp.content)
+            meme_bg = Image.open(meme_bg_file).convert("RGBA")
+        else:
+            meme_bg = Image.open(template_image_path).convert("RGBA")
+            
         user_face = Image.open(final_face_path).convert("RGBA")
 
         slot = selected_template["face_slot"]
@@ -105,20 +116,33 @@ def create_sticker(
         meme_bg.paste(user_face, (paste_x, paste_y), user_face)
 
         meme_bg.thumbnail((TARGET_SIZE, TARGET_SIZE), Image.Resampling.LANCZOS)
-        sticker = Image.new("RGBA", (TARGET_SIZE, TARGET_SIZE), (255, 255, 255, 0))
+        sticker_bg = Image.new("RGBA", (TARGET_SIZE, TARGET_SIZE), (255, 255, 255, 0))
         cx = (TARGET_SIZE - meme_bg.width) // 2
         cy = (TARGET_SIZE - meme_bg.height) // 2
-        sticker.paste(meme_bg, (cx, cy))
+        sticker_bg.paste(meme_bg, (cx, cy))
 
-        final_name = f"sticker_{base_filename}.webp"
-        final_path = os.path.join(UPLOAD_DIR, final_name)
-        sticker.save(final_path, format="WEBP", quality=80, method=6)
+        img_byte_arr = io.BytesIO()
+        sticker_bg.save(img_byte_arr, format="WEBP", quality=80, method=6)
+        img_byte_arr.seek(0)
+        
+        response = cloudinary.uploader.upload(
+            img_byte_arr, 
+            public_id=f"sticker_{base_filename}",
+            folder="stickers",
+            resource_type="image", 
+            format="webp"
+        )
+        
+        print("Cloudinary upload response:", response)
+        
+        final_meme_url = response["secure_url"]
+        print(f"Final sticker URL: {final_meme_url}")
 
         base_url = str(request.base_url).rstrip("/")
         return {
             "status": "Success! WhatsApp Sticker Ready.",
             "meme_selected": selected_template["name"],
-            "final_meme_url": f"{base_url}/uploads/{final_name}",
+            "final_meme_url": final_meme_url,
         }
 
     finally:

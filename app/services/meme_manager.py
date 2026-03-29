@@ -28,8 +28,12 @@ def get_meme_template(template_id: str = None, dominant_emotion: str = None):
     if not selected_template:
         raise ValueError(f"Template not found: {template_id}")
 
-    image_path = os.path.join(TEMPLATE_DIR, selected_template["filename"])
+    filename = selected_template.get("filename", "")
+    if filename.startswith("http://") or filename.startswith("https://"):
+        return selected_template, filename
+
+    image_path = os.path.join(TEMPLATE_DIR, filename)
     if not os.path.isfile(image_path):
-        raise FileNotFoundError(f"Template image missing: {selected_template['filename']}")
+        raise FileNotFoundError(f"Template image missing: {filename}")
 
     return selected_template, image_path

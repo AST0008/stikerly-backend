@@ -1,6 +1,8 @@
 import os
 import shutil
 import logging
+import cloudinary
+import cloudinary.uploader
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 
@@ -32,15 +34,46 @@ def upload_template_image(file: UploadFile = File(...)):
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
-    dest_path = os.path.join(TEMPLATE_DIR, file.filename)
-    with open(dest_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    # dest_path = os.path.join(TEMPLATE_DIR, file.filename)
+    
+    file.file.seek(0)
+    file_bytes = file.file.read()
+    
+    # using cloudinary 
+    result = cloudinary.uploader.upload(file_bytes, folder="stikerly_templates")
+    
+    # with open(dest_path, "wb") as f:
+    #     shutil.copyfileobj(file.file, f)
 
-    face_slot = detect_face_slot_from_path(dest_path)
-
+    print(f"Uploaded {file.filename} to Cloudinary: {result['secure_url']}")
+    
+    import cv2
+    import numpy as np
+    nparr = np.frombuffer(file_bytes, np.uint8)
+    image_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    from app.services.face import mp_face_detection
+    face_slot = None
+    if image_cv is not None:
+        img_h, img_w = image_cv.shape[:2]
+        rgb = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
+        with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.3) as detector:
+            results = detector.process(rgb)
+        if results and results.detections:
+            from app.models.template import FaceSlot
+            detection = max(results.detections, key=lambda d: d.score[0])
+            bb = detection.location_data.relative_bounding_box
+            face_slot = FaceSlot(
+                x=max(0, int(bb.xmin * img_w)),
+                y=max(0, int(bb.ymin * img_h)),
+                width=int(bb.width * img_w),
+                height=int(bb.height * img_h),
+                rotation=0,
+            )
+            
     return {
         "filename": file.filename,
-        "image_url": f"/templates-static/{file.filename}",
+        "image_url": result["secure_url"],
         "face_slot": face_slot,
         "face_detected": face_slot is not None,
     }
@@ -48,14 +81,10 @@ def upload_template_image(file: UploadFile = File(...)):
 
 @router.post("/templates")
 def save_template(body: SaveTemplateRequest):
-    image_path = os.path.join(TEMPLATE_DIR, body.filename)
-    if not os.path.isfile(image_path):
-        raise HTTPException(status_code=404, detail=f"Image file not found: {body.filename}")
-
     doc = {
         "id": body.id,
         "name": body.name,
-        "filename": body.filename,
+        "filename": body.filename,  # the frontend still sends filename, but maybe we should store image_url?
         "tags": body.tags,
         "face_slot": body.face_slot.model_dump(),
     }
@@ -78,9 +107,10 @@ def delete_template(template_id: str, delete_file: bool = False):
     templates_collection.delete_one({"id": template_id})
 
     if delete_file:
-        file_path = os.path.join(TEMPLATE_DIR, doc["filename"])
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        pass # To properly delete from Cloudinary we'd need the public_id
+        # file_path = os.path.join(TEMPLATE_DIR, doc["filename"])
+        # if os.path.exists(file_path):
+        #     os.remove(file_path)
 
     return {"status": "deleted", "template_id": template_id}
 
